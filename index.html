@@ -295,10 +295,6 @@
 
             <div class="settings-grid">
                 <div class="field">
-                    <label for="saladCount">Salads per week</label>
-                    <input id="saladCount" type="number" min="0" max="7" value="1">
-                </div>
-                <div class="field">
                     <label for="sproutsBhelCount">Sprouts bhel per week</label>
                     <input id="sproutsBhelCount" type="number" min="0" max="7" value="1">
                 </div>
@@ -340,6 +336,8 @@
             { value: "dinner", label: "Dinner" }
         ];
         const blockedMenuWords = ["khichdi"];
+        const itemMealTypeFixes = { "Bhendi": ["lunch"], "Sprouts salad": ["lunch"] };
+        const itemsToRemoveOnMigration = ["Sprouted moong", "Chana Salad", "Quinoa upma", "French toast", "Tondli", "Khow suey"];
         const groupOptions = [
             { value: "flatbread", label: "Paratha / thepla / thalipeeth" },
             { value: "protein", label: "Dal / usal / protein" },
@@ -351,7 +349,6 @@
             { value: "custom", label: "Other" }
         ];
         const defaultRules = {
-            saladCount: 1,
             sproutsBhelCount: 1,
             flatbreadLimit: 3,
             enabledMeals: ["dinner"]
@@ -370,28 +367,20 @@
             { name: "Mixed usal and bread", group: "protein", mealTypes: ["lunch", "dinner"] },
             { name: "Mixed sprout usal", group: "protein", mealTypes: ["lunch", "dinner"] },
             { name: "Sprouts bhel", group: "protein", mealTypes: ["snack", "dinner"] },
-            { name: "Sprouted moong", group: "protein", mealTypes: ["snack", "dinner"] },
             { name: "Chole", group: "protein", mealTypes: ["lunch", "dinner"] },
             { name: "Mutter paneer", group: "protein", mealTypes: ["lunch", "dinner"] },
             { name: "Ragda protein patties", group: "protein", mealTypes: ["snack", "dinner"] },
-            { name: "Carrot ginger soup", group: "soup", mealTypes: ["snack", "dinner"] },
-            { name: "Palak soup", group: "soup", mealTypes: ["snack", "dinner"] },
-            { name: "Broccoli soup", group: "soup", mealTypes: ["snack", "dinner"] },
-            { name: "Sweet corn soup", group: "soup", mealTypes: ["snack", "dinner"] },
-            { name: "Roasted tomato soup", group: "soup", mealTypes: ["snack", "dinner"] },
-            { name: "Salad and soup", group: "soup", mealTypes: ["lunch", "dinner"] },
-            { name: "Dinner salad", group: "salad", mealTypes: ["lunch", "dinner"] },
-            { name: "Sprouts salad", group: "salad", mealTypes: ["lunch", "dinner"] },
-            { name: "Chana salad", group: "salad", mealTypes: ["lunch", "dinner"] },
-            { name: "Bhendi", group: "vegetable", mealTypes: ["lunch", "dinner"] },
-            { name: "Tondli", group: "vegetable", mealTypes: ["lunch", "dinner"] },
+            { name: "Carrot ginger soup", group: "soup", mealTypes: ["snack"] },
+            { name: "Palak soup", group: "soup", mealTypes: ["snack"] },
+            { name: "Broccoli soup", group: "soup", mealTypes: ["snack"] },
+            { name: "Sweet corn soup", group: "soup", mealTypes: ["snack"] },
+            { name: "Roasted tomato soup", group: "soup", mealTypes: ["snack"] },
+            { name: "Sprouts salad", group: "salad", mealTypes: ["lunch"] },
+            { name: "Bhendi", group: "vegetable", mealTypes: ["lunch"] },
             { name: "Handvo", group: "vegetable", mealTypes: ["breakfast", "snack", "dinner"] },
-            { name: "Quinoa upma", group: "vegetable", mealTypes: ["breakfast", "lunch", "dinner"] },
             { name: "Avocado toast", group: "fusion", mealTypes: ["breakfast", "snack", "dinner"] },
             { name: "Burger and soup", group: "fusion", mealTypes: ["lunch", "dinner"] },
             { name: "Sweet potato wraps", group: "fusion", mealTypes: ["lunch", "dinner"] },
-            { name: "Khow suey", group: "fusion", mealTypes: ["dinner"] },
-            { name: "French toast", group: "breakfast", mealTypes: ["breakfast", "snack", "dinner"] }
         ];
 
         let state = {
@@ -406,12 +395,20 @@
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
+                    const existingRemovedNames = parsed.removedNames || [];
+                    const migratedRemovedNames = [
+                        ...existingRemovedNames,
+                        ...itemsToRemoveOnMigration.filter(name =>
+                            !existingRemovedNames.some(r => r.toLowerCase() === name.toLowerCase())
+                        )
+                    ];
                     state = {
-                        items: mergeStarterItems(parsed.items || starterItems, parsed.removedNames || []),
+                        items: mergeStarterItems(parsed.items || starterItems, migratedRemovedNames),
                         plan: parsed.plan || [],
                         rules: { ...defaultRules, ...(parsed.rules || {}) },
-                        removedNames: parsed.removedNames || []
+                        removedNames: migratedRemovedNames
                     };
+                    localStorage.setItem(storageKey, JSON.stringify(state));
                 } catch (error) {
                     state = { items: starterItems, plan: [], rules: defaultRules, removedNames: [] };
                 }
@@ -428,7 +425,9 @@
         function mergeStarterItems(savedItems, removedNames = []) {
             const merged = savedItems
                 .filter(item => isAllowedMenuItem(item.name))
-                .map(normalizeItem);
+                .filter(item => !itemsToRemoveOnMigration.some(name => name.toLowerCase() === item.name.toLowerCase()))
+                .map(normalizeItem)
+                .map(item => itemMealTypeFixes[item.name] ? { ...item, mealTypes: itemMealTypeFixes[item.name] } : item);
             const savedNames = new Set(merged.map(item => item.name.toLowerCase()));
             const removed = new Set(removedNames.map(name => name.toLowerCase()));
 
@@ -451,7 +450,7 @@
         }
 
         function inferMealTypes(item) {
-            if (item.group === "breakfast") return ["breakfast", "snack", "dinner"];
+            if (item.group === "breakfast") return ["breakfast", "snack"];
             return ["dinner"];
         }
 
@@ -491,6 +490,9 @@
             if (shouldSave) saveData();
         }
 
+        const sproutsLikeDinnerItems = new Set(["Sprouts bhel", "Mixed usal and bread", "Mixed sprout usal"]);
+        const sproutGroupItems = new Set(["Sprouts bhel", "Sprouts salad", "Mixed usal and bread", "Mixed sprout usal"]);
+
         function pickDinnerItem(dayIndex, context) {
             const forcedRule = context.forcedDays[dayIndex] || "";
             const choices = getAllowedChoices({
@@ -505,7 +507,31 @@
             context.lastGroup = chosen.group;
             context.usedNames.add(chosen.name);
             if (chosen.group === "flatbread") context.flatbreadCount += 1;
-            return chosen;
+            return formatDinnerChoice(chosen);
+        }
+
+        function canPairSoupWithDinner(item) {
+            if (!item || item.name === "Burger and soup") return false;
+            if (item.name === "Pithla bhakri" || item.name === "Sprouts bhel") return false;
+            if (item.name === "Moong dal chila" || item.name === "Avocado toast") return true;
+            return item.group === "flatbread";
+        }
+
+        function pickDinnerSoup() {
+            const soups = state.items.filter(item => item.group === "soup");
+            if (!soups.length) return null;
+            return soups[Math.floor(Math.random() * soups.length)].name;
+        }
+
+        function formatDinnerChoice(item) {
+            if (!canPairSoupWithDinner(item)) return item;
+            const soup = pickDinnerSoup();
+            if (!soup) return item;
+            return {
+                name: `${item.name} + ${soup}`,
+                group: item.group,
+                mealTypes: item.mealTypes
+            };
         }
 
         function pickMealItem(mealType, context) {
@@ -539,11 +565,6 @@
             const indexes = shuffle([...Array(days.length).keys()]);
             let cursor = 0;
 
-            for (let i = 0; i < clampRule(state.rules.saladCount); i += 1) {
-                forced[indexes[cursor]] = "salad";
-                cursor += 1;
-            }
-
             for (let i = 0; i < clampRule(state.rules.sproutsBhelCount); i += 1) {
                 if (cursor >= indexes.length) break;
                 forced[indexes[cursor]] = "sprouts-bhel";
@@ -554,22 +575,22 @@
         }
 
         function getAllowedChoices({ mealType, forcedRule, usedNames, flatbreadCount, lastGroup }) {
+            const usedSproutItem = [...usedNames].find(name => sproutGroupItems.has(name));
+
             let choices = state.items.filter(item => {
                 if (!item.mealTypes.includes(mealType)) return false;
+                if (mealType === "dinner" && item.group === "soup") return false;
                 if (usedNames.has(item.name)) return false;
-                if (forcedRule === "sprouts-bhel" && item.name !== "Sprouts bhel") return false;
-                if (forcedRule === "salad" && item.group !== "salad") return false;
-                if (forcedRule !== "sprouts-bhel" && item.name === "Sprouts bhel") return false;
-                if (forcedRule !== "salad" && item.group === "flatbread" && flatbreadCount >= clampRule(state.rules.flatbreadLimit)) return false;
+                if (sproutGroupItems.has(item.name) && usedSproutItem) return false;
+                if (forcedRule === "sprouts-bhel" && !sproutsLikeDinnerItems.has(item.name)) return false;
+                if (forcedRule !== "sprouts-bhel" && sproutsLikeDinnerItems.has(item.name)) return false;
+                if (item.group === "flatbread" && flatbreadCount >= clampRule(state.rules.flatbreadLimit)) return false;
                 return true;
             });
 
             if (choices.length === 0 && forcedRule === "sprouts-bhel") {
-                choices = [{ name: "Sprouts bhel", group: "protein" }];
-            }
-
-            if (choices.length === 0 && forcedRule === "salad") {
-                choices = state.items.filter(item => item.group === "salad" && item.mealTypes.includes(mealType));
+                choices = state.items.filter(item => sproutsLikeDinnerItems.has(item.name) && !usedNames.has(item.name));
+                if (choices.length === 0) choices = [{ name: "Sprouts bhel", group: "protein", mealTypes: ["snack", "dinner"] }];
             }
 
             if (choices.length === 0) {
@@ -620,7 +641,6 @@
         }
 
         function renderSettings() {
-            document.getElementById("saladCount").value = state.rules.saladCount;
             document.getElementById("sproutsBhelCount").value = state.rules.sproutsBhelCount;
             document.getElementById("flatbreadLimit").value = state.rules.flatbreadLimit;
             document.getElementById("enabledMeals").innerHTML = mealCheckboxes("enabled-meal", getEnabledMeals());
@@ -663,7 +683,6 @@
         function readSettings() {
             const enabledMeals = Array.from(document.querySelectorAll('[data-field="enabled-meal"]:checked')).map(input => input.value);
             state.rules = {
-                saladCount: clampRule(document.getElementById("saladCount").value),
                 sproutsBhelCount: clampRule(document.getElementById("sproutsBhelCount").value),
                 flatbreadLimit: clampRule(document.getElementById("flatbreadLimit").value),
                 enabledMeals: enabledMeals.length ? enabledMeals : ["dinner"]

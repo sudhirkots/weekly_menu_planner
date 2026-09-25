@@ -1,4 +1,4 @@
-const cacheName = "weekly-menu-generator-v4";
+const cacheName = "weekly-menu-generator-v6";
 const appFiles = [
     "./",
     "./index.html",
